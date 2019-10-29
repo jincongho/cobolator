@@ -4,6 +4,75 @@
 // extract from chromium source code by @liuwayong
 (function () {
     'use strict';
+
+    /**
+     * CommandBox
+     * @param {dom element} target containing element id.
+     * @constructor
+     * @export
+     */
+    function commandBox(target){
+
+        this.target = target;
+        this.spaceCallbacks = [];
+        this.downCallbacks = [];
+        this.init();
+
+    }
+
+    commandBox.prototype = {
+
+        init: function(){
+            document.onkeydown = function(evt) {
+                this.input(evt);
+            }.bind(this);
+        },
+
+        input: function(evt){
+            if (evt.keyCode == 8){
+                this.pop();
+            }else if(evt.keyCode == 13){
+                this.clear();
+            }else if(/[a-zA-Z0-9]/i.test(String.fromCharCode(evt.which || evt.keyCode))){
+                this.append(evt.key);
+            }
+        },
+
+        append: function(char){
+            this.target.value += char;
+        },
+
+        pop: function(){
+            this.target.value = this.target.value.slice(0,-1);
+        },
+
+        clear: function(){
+            if(this.target.value=="COBOL"){
+                this.trigger(this.spaceCallbacks);
+            }else if(this.target.value=="PICX"){
+                this.trigger(this.downCallbacks);
+            }
+
+            this.target.value = "";
+        },
+
+        listenSpace: function(callback){
+            this.spaceCallbacks.push(callback);
+        },
+
+        listenDown: function(callback){
+            this.downCallbacks.push(callback);
+        },
+
+        trigger: function(callbacks){
+            for (var i = callbacks.length - 1; i >= 0; i--) {
+                callbacks[i]();
+            }
+        }
+
+    };
+
+
     /**
      * T-Rex runner.
      * @param {string} outerContainerId Outer containing element id.
@@ -109,7 +178,7 @@
         CLEAR_TIME: 3000,
         CLOUD_FREQUENCY: 0.5,
         GAMEOVER_CLEAR_TIME: 750,
-        GAP_COEFFICIENT: 0.6,
+        GAP_COEFFICIENT: 8,
         GRAVITY: 0.6,
         INITIAL_JUMP_VELOCITY: 12,
         INVERT_FADE_DURATION: 12000,
@@ -122,7 +191,7 @@
         MIN_JUMP_HEIGHT: 35,
         MOBILE_SPEED_COEFFICIENT: 1.2,
         RESOURCE_TEMPLATE_ID: 'audio-resources',
-        SPEED: 6,
+        SPEED: 3.5,
         SPEED_DROP_COEFFICIENT: 3
     };
 
@@ -384,6 +453,12 @@
                 this.createTouchController();
             }
 
+            this.cb = new commandBox(document.getElementById('commandBox'));
+            this.cb.listenSpace(function(){
+                var box = document.getElementById("messageBox");
+                box.style.visibility="hidden";
+            });
+
             this.startListening();
             this.update();
 
@@ -553,7 +628,7 @@
 
                 // Check for collisions.
                 var collision = hasObstacles &&
-                    checkForCollision(this.horizon.obstacles[0], this.tRex);
+                    checkForCollision(this.horizon.obstacles[0], this.tRex/*, this.canvasCtx*/);
 
                 if (!collision) {
                     this.distanceRan += this.currentSpeed * deltaTime / this.msPerFrame;
@@ -626,36 +701,94 @@
          * Bind relevant key / mouse / touch listeners.
          */
         startListening: function () {
-            // Keys.
-            document.addEventListener(Runner.events.KEYDOWN, this);
-            document.addEventListener(Runner.events.KEYUP, this);
+            this.cb.listenSpace(this.onSpace.bind(this));
+            this.cb.listenDown(this.onDown.bind(this));
+            // // Keys.
+            // document.addEventListener(Runner.events.KEYDOWN, this);
+            // document.addEventListener(Runner.events.KEYUP, this);
 
-            if (IS_MOBILE) {
-                // Mobile only touch devices.
-                this.touchController.addEventListener(Runner.events.TOUCHSTART, this);
-                this.touchController.addEventListener(Runner.events.TOUCHEND, this);
-                this.containerEl.addEventListener(Runner.events.TOUCHSTART, this);
-            } else {
-                // Mouse.
-                document.addEventListener(Runner.events.MOUSEDOWN, this);
-                document.addEventListener(Runner.events.MOUSEUP, this);
-            }
+            // if (IS_MOBILE) {
+            //     // Mobile only touch devices.
+            //     this.touchController.addEventListener(Runner.events.TOUCHSTART, this);
+            //     this.touchController.addEventListener(Runner.events.TOUCHEND, this);
+            //     this.containerEl.addEventListener(Runner.events.TOUCHSTART, this);
+            // } else {
+            //     // Mouse.
+            //     document.addEventListener(Runner.events.MOUSEDOWN, this);
+            //     document.addEventListener(Runner.events.MOUSEUP, this);
+            // }
         },
 
         /**
          * Remove all listeners.
          */
         stopListening: function () {
-            document.removeEventListener(Runner.events.KEYDOWN, this);
-            document.removeEventListener(Runner.events.KEYUP, this);
+            // document.removeEventListener(Runner.events.KEYDOWN, this);
+            // document.removeEventListener(Runner.events.KEYUP, this);
 
-            if (IS_MOBILE) {
-                this.touchController.removeEventListener(Runner.events.TOUCHSTART, this);
-                this.touchController.removeEventListener(Runner.events.TOUCHEND, this);
-                this.containerEl.removeEventListener(Runner.events.TOUCHSTART, this);
-            } else {
-                document.removeEventListener(Runner.events.MOUSEDOWN, this);
-                document.removeEventListener(Runner.events.MOUSEUP, this);
+            // if (IS_MOBILE) {
+            //     this.touchController.removeEventListener(Runner.events.TOUCHSTART, this);
+            //     this.touchController.removeEventListener(Runner.events.TOUCHEND, this);
+            //     this.containerEl.removeEventListener(Runner.events.TOUCHSTART, this);
+            // } else {
+            //     document.removeEventListener(Runner.events.MOUSEDOWN, this);
+            //     document.removeEventListener(Runner.events.MOUSEUP, this);
+            // }
+        },
+
+        onSpace: function(){
+            if (!this.crashed) {
+                if (!this.playing) {
+                    this.loadSounds();
+                    this.playing = true;
+                    this.update();
+                    if (window.errorPageController) {
+                        errorPageController.trackEasterEgg();
+                    }
+                }
+                //  Play sound effect and jump on starting the game for the first time.
+                if (!this.tRex.jumping/* && !this.tRex.ducking*/) {
+                    if(this.tRex.ducking){
+                        this.tRex.speedDrop = false;
+                        this.tRex.setDuck(false);
+                    }
+                    this.playSound(this.soundFx.BUTTON_PRESS);
+                    this.tRex.startJump(this.currentSpeed);
+                }
+            }
+
+            if (this.crashed) {
+                this.restart();
+
+                // Check that enough time has elapsed before allowing jump key to restart.
+                var deltaTime = getTimeStamp() - this.time;
+                if (deltaTime >= this.config.GAMEOVER_CLEAR_TIME) {
+                    this.restart();
+                }
+            }
+
+            if (this.paused) {
+                // Reset the jump state
+                this.tRex.reset();
+                this.play();
+            }
+        },
+
+        onDown: function(){
+            if (this.playing && !this.crashed) {
+                if (this.tRex.jumping) {
+                    // Speed drop, activated only when jump key is not pressed.
+                    this.tRex.setSpeedDrop();
+                } else if (!this.tRex.jumping && !this.tRex.ducking) {
+                    // Duck.
+                    this.tRex.setDuck(true);
+                }
+                setTimeout(function(){
+                    if(this.tRex.ducking){
+                        this.tRex.speedDrop = false;
+                        this.tRex.setDuck(false);
+                    }
+                }.bind(this), 2000);
             }
         },
 
@@ -1461,10 +1594,10 @@
             type: 'PTERODACTYL',
             width: 46,
             height: 40,
-            yPos: [100, 75, 50], // Variable height.
+            yPos: [75], // Variable height.
             yPosMobile: [100, 50], // Variable height mobile.
             multipleSpeed: 999,
-            minSpeed: 8.5,
+            minSpeed: 0,
             minGap: 150,
             collisionBoxes: [
                 new CollisionBox(15, 15, 16, 5),
@@ -1523,8 +1656,8 @@
      * @enum {number}
      */
     Trex.config = {
-        DROP_VELOCITY: -5,
-        GRAVITY: 0.6,
+        DROP_VELOCITY: -6,
+        GRAVITY: 0.5,
         HEIGHT: 47,
         HEIGHT_DUCK: 25,
         INIITAL_JUMP_VELOCITY: -10,
@@ -1794,7 +1927,7 @@
             }
 
             // Reached max height
-            if (this.yPos < this.config.MAX_JUMP_HEIGHT || this.speedDrop) {
+            if (this.yPos > this.config.MAX_JUMP_HEIGHT || this.speedDrop) {
                 this.endJump();
             }
 
